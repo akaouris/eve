@@ -374,6 +374,9 @@ const qemuNetTemplate = `
   downscript = "no"
 {{- if eq .Driver "virtio-net-pci" }}
   vhost = "on"
+{{- if gt .Queues 1 }}
+  queues = "{{.Queues}}"
+{{- end}}
 {{- end}}
 
 [device "net{{.NetID}}"]
@@ -384,6 +387,9 @@ const qemuNetTemplate = `
   addr = "0x0"
 {{- if and (eq .Driver "virtio-net-pci") (ne .MTU 0) }}
   host_mtu = "{{.MTU}}"
+{{- end}}
+{{- if and (eq .Driver "virtio-net-pci") (gt .Queues 1) }}
+  vectors = "{{.Vectors}}"
 {{- end}}
 `
 
@@ -514,6 +520,8 @@ type tQemuNetContext struct {
 	Driver           string
 	Mac, Bridge, Vif string
 	MTU              uint16
+	Queues           int
+	Vectors          int
 }
 
 // Context for qemuSerialTemplate.
@@ -1474,7 +1482,8 @@ func (f *pciAssignmentsTemplateFiller) do(pciAssignments []pciDevice) error {
 }
 
 type virtNetworkTemplateFiller struct {
-	file io.Writer
+	file  io.Writer
+	vCpus int
 }
 
 func (f *virtNetworkTemplateFiller) do(virtualNetworks []virtualNetwork,
@@ -1492,6 +1501,8 @@ func (f *virtNetworkTemplateFiller) do(virtualNetworks []virtualNetwork,
 			netContext.Driver = "e1000"
 		} else {
 			netContext.Driver = "virtio-net-pci"
+			netContext.Queues = f.vCpus
+			netContext.Vectors = 2*f.vCpus + 2
 		}
 		if err := tQemuNet.Execute(f.file, netContext); err != nil {
 			return logError("failed to write network template to config file: %v", err)
@@ -1655,7 +1666,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 
 	// Render virtual network interfaces.
 	virtNetworksFiller := virtNetworkTemplateFiller{
-		file: file,
+		file:  file,
+		vCpus: config.VCpus,
 	}
 	err = virtNetworksFiller.do(virtualNetworks, config.VirtualizationMode)
 	if err != nil {
