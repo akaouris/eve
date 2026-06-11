@@ -389,6 +389,7 @@ const qemuNetTemplate = `
   host_mtu = "{{.MTU}}"
 {{- end}}
 {{- if and (eq .Driver "virtio-net-pci") (gt .Queues 1) }}
+  mq = "on"
   vectors = "{{.Vectors}}"
 {{- end}}
 `
