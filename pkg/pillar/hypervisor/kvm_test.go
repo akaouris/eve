@@ -333,6 +333,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   mac = "6a:00:03:61:a6:90"
   bus = "pci.7"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.8"]
@@ -358,6 +359,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.8"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [chardev "charserial-usr0"]
@@ -624,6 +626,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   mac = "6a:00:03:61:a6:90"
   bus = "pci.7"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.8"]
@@ -649,6 +652,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.8"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [chardev "charserial-usr0"]
@@ -882,6 +886,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   mac = "6a:00:03:61:a6:90"
   bus = "pci.7"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.8"]
@@ -907,6 +912,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.8"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [chardev "charserial-usr0"]
@@ -1376,6 +1382,7 @@ func domConfigArm64() string {
   mac = "6a:00:03:61:a6:90"
   bus = "pci.8"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.9"]
@@ -1401,6 +1408,7 @@ func domConfigArm64() string {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.9"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.10"]
@@ -1679,6 +1687,7 @@ func domConfigAmd64FML() string {
   mac = "6a:00:03:61:a6:90"
   bus = "pci.8"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.9"]
@@ -1704,6 +1713,7 @@ func domConfigAmd64FML() string {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.9"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.10"]
@@ -2271,6 +2281,7 @@ func domConfigAmd64() string {
   mac = "6a:00:03:61:a6:90"
   bus = "pci.8"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.9"]
@@ -2296,6 +2307,7 @@ func domConfigAmd64() string {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.9"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.10"]
@@ -2563,6 +2575,7 @@ func domConfigContainerVNC() string {
   mac = "6a:00:03:61:a6:90"
   bus = "pci.7"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.8"]
@@ -2588,6 +2601,7 @@ func domConfigContainerVNC() string {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.8"
   addr = "0x0"
+  mq = "on"
   vectors = "6"
 
 [device "pci.9"]
@@ -3341,4 +3355,42 @@ func TestPCIAddressAllocator(t *testing.T) {
 	fmt.Println(err.Error())
 	g.Expect(err.Error()).To(ContainSubstring("User-defined network interface order " +
 		"disrupts the function sequence of the multifunction PCI devices 0000:06:00 and 0000:08:00"))
+}
+
+func TestVirtNetworkTemplateFillerMultiqueue(t *testing.T) {
+	g := NewGomegaWithT(t)
+	vifs := []virtualNetwork{
+		{
+			VifConfig:   types.VifConfig{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x90}, Vif: "nbu1x1"},
+			networkID:   0,
+			pciDeviceID: 7,
+		},
+	}
+
+	t.Run("single vCPU keeps single queue", func(t *testing.T) {
+		buf := bytes.Buffer{}
+		filler := virtNetworkTemplateFiller{file: &buf, vCpus: 1}
+		g.Expect(filler.do(vifs, types.HVM)).To(Succeed())
+		g.Expect(buf.String()).NotTo(ContainSubstring("queues"))
+		g.Expect(buf.String()).NotTo(ContainSubstring("mq ="))
+		g.Expect(buf.String()).NotTo(ContainSubstring("vectors"))
+	})
+
+	t.Run("multiple vCPUs enable multiqueue", func(t *testing.T) {
+		buf := bytes.Buffer{}
+		filler := virtNetworkTemplateFiller{file: &buf, vCpus: 4}
+		g.Expect(filler.do(vifs, types.HVM)).To(Succeed())
+		g.Expect(buf.String()).To(ContainSubstring(`queues = "4"`))
+		g.Expect(buf.String()).To(ContainSubstring(`mq = "on"`))
+		g.Expect(buf.String()).To(ContainSubstring(`vectors = "10"`))
+	})
+
+	t.Run("legacy e1000 has no multiqueue", func(t *testing.T) {
+		buf := bytes.Buffer{}
+		filler := virtNetworkTemplateFiller{file: &buf, vCpus: 4}
+		g.Expect(filler.do(vifs, types.LEGACY)).To(Succeed())
+		g.Expect(buf.String()).NotTo(ContainSubstring("queues"))
+		g.Expect(buf.String()).NotTo(ContainSubstring("mq ="))
+		g.Expect(buf.String()).NotTo(ContainSubstring("vectors"))
+	})
 }
