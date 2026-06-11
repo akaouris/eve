@@ -66,7 +66,7 @@ do_imagefromtar() {
   fi
   : > "$IMAGE"
   # shellcheck disable=SC2002
-  cat "${tarfile}" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
+  cat "${tarfile}" | docker run -i --rm ${MKROOTFS_CPUS:+--cpus="${MKROOTFS_CPUS}"} -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
 }
 
 abspath() {
